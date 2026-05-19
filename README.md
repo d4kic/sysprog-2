@@ -10,4 +10,4 @@ klijentu se prikazuje poruka. Za kreiranje zip arhive koristiti biblioteku Sharp
 
 Strategija upravljanja keš memorijom: vremensko isticanje.
 
-Primer poziva serveru: http://localhost:5050/test1.txt&test2.txt&test3.txt# sysprog-2
+Primer poziva serveru: http://localhost:5050/test1.txt&test2.txt&test3.txt
