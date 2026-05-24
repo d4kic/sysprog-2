@@ -7,14 +7,15 @@ namespace zip_server.src.Server
         private readonly HttpListener listener = new();
         private readonly RequestQueue queue = new();
         private readonly WorkerPool pool;
+        private readonly CancellationTokenSource cts = new();
 
         public WebServer(int workerCount)
         {
             listener.Prefixes.Add("http://localhost:5050/");
-            pool = new WorkerPool(queue, workerCount);
+            pool = new WorkerPool(queue, workerCount, cts.Token);
         }
 
-        public void Start()
+        public async Task StartAsync()
         {
             listener.Start();
             pool.Start();
@@ -24,7 +25,7 @@ namespace zip_server.src.Server
             new Thread(() =>
             {
                 while (Console.ReadKey(true).Key != ConsoleKey.Z) { }
-                listener.Stop();
+                Stop();
             })
             {
                 IsBackground = true
@@ -34,7 +35,7 @@ namespace zip_server.src.Server
             {
                 try
                 {
-                    HttpListenerContext context = listener.GetContext();
+                    HttpListenerContext context = await listener.GetContextAsync();
                     queue.EnqueueRequest(context);
                 }
                 catch
@@ -42,6 +43,14 @@ namespace zip_server.src.Server
                     break;
                 }
             }
+        }
+
+        private void Stop()
+        {
+            cts.Cancel();
+            pool.WaitAll();
+            listener.Stop();
+            Logger.Log("Server uspesno ugasen.");
         }
     }
 }

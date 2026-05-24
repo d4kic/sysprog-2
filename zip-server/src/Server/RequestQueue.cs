@@ -1,4 +1,6 @@
 ﻿using System.Net;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 
 namespace zip_server.src.Server
 {
@@ -6,23 +8,27 @@ namespace zip_server.src.Server
     {
         private readonly Queue<HttpListenerContext> queue = new();
         private readonly object lockObj = new();
+        private readonly SemaphoreSlim sem = new SemaphoreSlim(0);
 
         public void EnqueueRequest(HttpListenerContext context)
         {
             lock (lockObj)
             {
                 queue.Enqueue(context);
-                Monitor.Pulse(lockObj);
             }
+            sem.Release();
         }
 
-        public HttpListenerContext DequeueRequest()
+        public async Task<HttpListenerContext?> DequeueRequestAsync(CancellationToken ctoken)
         {
-            lock(lockObj)
+            await sem.WaitAsync(ctoken);
+
+            if (ctoken.IsCancellationRequested)
+                return null;
+
+            lock (lockObj)
             {
-                while (queue.Count == 0)
-                    Monitor.Wait(lockObj);
-                return queue.Dequeue();
+                return queue.Count > 0 ? queue.Dequeue() : null;
             }
         }
     }
