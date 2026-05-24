@@ -1,6 +1,4 @@
 ﻿using System.Net;
-using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 
 namespace zip_server.src.Server
 {
