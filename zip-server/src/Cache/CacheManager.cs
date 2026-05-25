@@ -42,10 +42,15 @@ namespace zip_server.src.Cache
                         if (now - kvp.Value.CreatedAt >= ttl)
                         {
                             cache.TryRemove(kvp.Key, out _);
+                            StampedeLock.Delete(kvp.Key);
                         }
                     }
-                    var lru = cache.OrderBy(kvp => kvp.Value.LastAccessedAt).First();
-                    cache.TryRemove(lru.Key, out _);
+                    if (cache.Count >= maxItems)
+                    {
+                        var lru = cache.OrderBy(kvp => kvp.Value.LastAccessedAt).First();
+                        cache.TryRemove(lru.Key, out _);
+                        StampedeLock.Delete(lru.Key);
+                    }
                 }
                 cache[key] = new CacheItem
                 {

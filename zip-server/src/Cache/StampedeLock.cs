@@ -10,5 +10,10 @@ namespace zip_server.src.Cache
         {
             return locks.GetOrAdd(key, _ => new object());
         }
+
+        public static void Delete(string key)
+        {
+            locks.TryRemove(key, out _);
+        }
     }
 }
