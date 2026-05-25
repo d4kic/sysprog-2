@@ -36,7 +36,7 @@ namespace zip_server.src.Server
                     HttpListenerContext? context = await queue!.DequeueRequestAsync(ctoken);
                     if (context == null)
                         continue;
-                    await Task.Run(() => RequestHandler.HandleRequest(context), ctoken)
+                    await Task.Run(() => RequestHandler.HandleRequestAsync(context), ctoken)
                         .ContinueWith(t =>
                         {
                             if (t.IsCanceled)

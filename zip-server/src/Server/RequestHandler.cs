@@ -9,7 +9,7 @@ namespace zip_server.src.Server
     {
         private static readonly string fileDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\Files");
 
-        public static void HandleRequest(object? obj)
+        public static async Task HandleRequestAsync(object? obj)
         {
             HttpListenerContext context = (HttpListenerContext)obj!;
 
@@ -18,7 +18,8 @@ namespace zip_server.src.Server
                 string? request = context.Request.Url?.AbsolutePath.TrimStart('/');
                 if (string.IsNullOrEmpty(request))
                 {
-                    LogMessage(context, "Primljen zahtev bez parametara.", "Nisu prosledjeni parametri zahtevu!", 400);
+                    await LogMessageAsync(context, "Primljen zahtev bez parametara.", 
+                        "Nisu prosledjeni parametri zahtevu!", 400);
                     return;
                 }
                 Logger.Log("Primljen zahtev: " + request);
@@ -32,7 +33,6 @@ namespace zip_server.src.Server
                     if (!File.Exists(filepath))
                     {
                         Logger.Log($"Zahtevani fajl {filename} ne postoji na serveru.");
-                        continue;
                     }
                     else
                     {
@@ -41,7 +41,8 @@ namespace zip_server.src.Server
                 }
                 if (found.Count == 0)
                 {
-                    LogMessage(context, "Zahtevani fajlovi ne postoje na serveru.", "Ne postoje zahtevani fajlovi!", 404);
+                    await LogMessageAsync(context, "Zahtevani fajlovi ne postoje na serveru.", 
+                        "Ne postoje zahtevani fajlovi!", 404);
                     return;
                 }
 
@@ -49,76 +50,90 @@ namespace zip_server.src.Server
                 if (CacheManager.TryGet(cacheKey, out byte[] cached))
                 {
                     Logger.Log("Pronadjeno u cache: " + cacheKey);
-                    SendZip(context, cached);
-                    Logger.Log("Zip fajl poslat.\n");
+                    await SendZipAsync(context, cached)
+                        .ContinueWith(t =>
+                        {
+                            if (t.IsCompleted)
+                                Logger.Log("Zip fajl poslat.\n");
+                        });
                     return;
                 }
 
-                lock (StampedeLock.Get(cacheKey))
-                {
-                    if (CacheManager.TryGet(cacheKey, out byte[] cachedIn))
+                await ZipFilesAsync(found)
+                    .ContinueWith(t =>
                     {
-                        Logger.Log("Pronadjeno u cache: " + cacheKey);
-                        SendZip(context, cachedIn);
-                        Logger.Log("Zip fajl poslat.\n");
-                        return;
-                    }
-                    using (MemoryStream ms = new MemoryStream())
-                    {
-                        using (ZipOutputStream zips = new ZipOutputStream(ms))
+                        byte[] zipData = t.Result;
+
+                        lock (StampedeLock.Get(cacheKey))
                         {
-                            foreach (string filename in found)
+                            if (!CacheManager.TryGet(cacheKey, out _))
                             {
-                                using (FileStream fs = File.OpenRead(filename))
-                                {
-                                    ZipEntry entry = new ZipEntry(Path.GetFileName(filename));
-                                    zips.PutNextEntry(entry);
-                                    fs.CopyTo(zips);
-                                    zips.CloseEntry();
-                                    Logger.Log("Zipovan fajl: " + filename);
-                                }
+                                CacheManager.Set(cacheKey, zipData);
+                                Logger.Log($"{cacheKey} kesiran.");
                             }
-                            zips.Finish();
                         }
 
-                        byte[] zipData = ms.ToArray();
-                        CacheManager.Set(cacheKey, zipData);
-                        Logger.Log($"{cacheKey} kesiran.");
-                        SendZip(context, zipData);
-                        Logger.Log("Zip fajl poslat.\n");
-                    }
-                }
+                        return SendZipAsync(context, zipData)
+                            .ContinueWith(zipTask =>
+                            {
+                                if (zipTask.IsCompleted)
+                                    Logger.Log("Zip fajl poslat.\n");
+                            }, TaskScheduler.Default);
+                    }, TaskScheduler.Default).Unwrap();
             }
             catch (Exception ex)
             {
-                LogMessage(context, "Error: " + ex.Message, "Error: " + ex.Message, 500);
+                await LogMessageAsync(context, "Error: " + ex.Message, "Error: " + ex.Message, 500);
             }
         }
 
-        static void SendZip(HttpListenerContext context, byte[] data)
+        static async Task<byte[]> ZipFilesAsync(List<string> found)
+        {
+            using (MemoryStream ms = new MemoryStream())
+            {
+                using (ZipOutputStream zips = new ZipOutputStream(ms))
+                {
+                    foreach (string filename in found)
+                    {
+                        using (FileStream fs = File.OpenRead(filename))
+                        {
+                            ZipEntry entry = new ZipEntry(Path.GetFileName(filename));
+                            zips.PutNextEntry(entry);
+                            await fs.CopyToAsync(zips);
+                            zips.CloseEntry();
+                            Logger.Log("Zipovan fajl: " + filename);
+                        }
+                    }
+                    zips.Finish();
+                }
+                return ms.ToArray();
+            }
+        }
+
+        static async Task SendZipAsync(HttpListenerContext context, byte[] data)
         {
             context.Response.AddHeader("Content-Disposition", "attachment; filename=files.zip");
             context.Response.StatusCode = 200;
             context.Response.ContentType = "application/zip";
             context.Response.ContentLength64 = data.Length;
-            context.Response.OutputStream.Write(data, 0, data.Length);
+            await context.Response.OutputStream.WriteAsync(data, 0, data.Length);
             context.Response.Close();
         }
 
-        static void SendText(HttpListenerContext context, string text, int statusCode)
+        static async Task SendTextAsync(HttpListenerContext context, string text, int statusCode)
         {
             byte[] buffer = Encoding.UTF8.GetBytes(text);
             context.Response.StatusCode = statusCode;
             context.Response.ContentType = "text/plain";
             context.Response.ContentLength64 = buffer.Length;
-            context.Response.OutputStream.Write(buffer, 0, buffer.Length);
+            await context.Response.OutputStream.WriteAsync(buffer, 0, buffer.Length);
             context.Response.Close();
         }
 
-        static void LogMessage(HttpListenerContext context, string logText, string sendText, int statusCode)
+        static async Task LogMessageAsync(HttpListenerContext context, string logText, string sendText, int statusCode)
         {
             Logger.Log(logText);
-            SendText(context, sendText, statusCode);
+            await SendTextAsync(context, sendText, statusCode);
         }
     }
 }
