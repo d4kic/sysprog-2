@@ -53,8 +53,10 @@ namespace zip_server.src.Server
                     await SendZipAsync(context, cached)
                         .ContinueWith(t =>
                         {
-                            if (t.IsCompleted)
+                            if (t.IsCompletedSuccessfully)
                                 Logger.Log("Zip fajl poslat.\n");
+                            else if (t.IsFaulted)
+                                Logger.Log($"Greska prilikom slanja fajla: {t.Exception?.InnerException?.Message}.\n");
                         });
                     return;
                 }
@@ -76,8 +78,10 @@ namespace zip_server.src.Server
                         return SendZipAsync(context, zipData)
                             .ContinueWith(zipTask =>
                             {
-                                if (zipTask.IsCompleted)
+                                if (t.IsCompletedSuccessfully)
                                     Logger.Log("Zip fajl poslat.\n");
+                                else if (t.IsFaulted)
+                                    Logger.Log($"Greska prilikom slanja fajla: {t.Exception?.InnerException?.Message}.\n");
                             }, TaskScheduler.Default);
                     }, TaskScheduler.Default).Unwrap();
             }

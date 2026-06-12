@@ -22,7 +22,8 @@ namespace zip_server.src.Server
             {
                 int id = i;
                 Task worker = Task.Factory.StartNew(() => WorkerJob(id), ctoken, 
-                    TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                    TaskCreationOptions.LongRunning, TaskScheduler.Default)
+                    .Unwrap();
                 workers.Add(worker);
             }
         }
@@ -40,7 +41,9 @@ namespace zip_server.src.Server
                         .ContinueWith(t =>
                         {
                             if (t.IsCanceled)
-                                Logger.Log($"Worker {id} ugasen.");
+                                Logger.Log($"Worker {id} prekinut.");
+                            if (t.IsFaulted)
+                                Logger.Log($"Worker {id} naisao na gresku: {t.Exception?.InnerException?.Message}.");
                         });
                 }
                 catch (OperationCanceledException)

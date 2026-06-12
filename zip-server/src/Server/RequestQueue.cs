@@ -19,10 +19,14 @@ namespace zip_server.src.Server
 
         public async Task<HttpListenerContext?> DequeueRequestAsync(CancellationToken ctoken)
         {
-            await sem.WaitAsync(ctoken);
-
-            if (ctoken.IsCancellationRequested)
+            try
+            {
+                await sem.WaitAsync(ctoken);
+            }
+            catch (OperationCanceledException)
+            {
                 return null;
+            }
 
             lock (lockObj)
             {
